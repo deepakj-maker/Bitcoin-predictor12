@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Financial Tool-Augmented LLM</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Orbitron:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="main-container">
+        <div class="left-panel">
+            <div class="card">
+                <header>
+                    <h1>Financial Tool-Augmented Model</h1>
+                    <p>
+                        An advanced demo simulating an LLM that uses a dynamic toolset for complex financial analysis.
+                    </p>
+                </header>
+
+                <form id="query-form">
+                    <div class="analysis-type-selector">
+                        <label>
+                            <input type="radio" name="analysis_type" value="simple" checked>
+                            <span>Simple Tool Use</span>
+                        </label>
+                        <label>
+                            <input type="radio" name="analysis_type" value="cot_report">
+                            <span>Stock Analyst Report</span>
+                        </label>
+                    </div>
+                    <textarea id="query-input" placeholder="For Simple Use, try 'show all tech stocks'. For a Report, enter a ticker like 'AAPL' or 'NVDA'."></textarea>
+                    <button type="submit">Analyze</button>
+                </form>
+            </div>
+            
+            <div id="results-container" class="card hidden">
+                <div id="results-content">
+                    <!-- Analysis results will be injected here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <div class="card chart-container">
+                <h3>P/E Ratio Comparison</h3>
+                <canvas id="pe-chart"></canvas>
+            </div>
+            
+<div class="card chart-container">
+    <h3>Bitcoin Sentiment Over Time</h3>
+    <canvas id="sentiment-chart"></canvas>
+</div>
+
+<div class="card history-container">
+                <h3>Query History</h3>
+                <ul id="history-list">
+                    <li>No queries yet.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let peChart;
+
+        function renderChart(chartData) {
+            const ctx = document.getElementById('pe-chart').getContext('2d');
+            if (peChart) {
+                peChart.destroy();
+            }
+            if (!chartData || !chartData.Ticker || !chartData.P_E_Ratio) {
+                console.error("Invalid chart data received:", chartData);
+                return;
+            }
+            peChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: chartData.Ticker,
+                    datasets: [{
+                        label: 'P/E Ratio',
+                        data: chartData.P_E_Ratio,
+                        backgroundColor: 'rgba(0, 255, 255, 0.5)',
+                        borderColor: 'rgba(0, 255, 255, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { 
+                            beginAtZero: true,
+                            ticks: { color: '#8B949E' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        x: {
+                            ticks: { color: '#8B949E' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        function updateHistory(history) {
+            const historyList = document.getElementById('history-list');
+            historyList.innerHTML = '';
+            if (!history || history.length === 0) {
+                historyList.innerHTML = '<li>No queries yet.</li>';
+                return;
+            }
+            history.slice().reverse().forEach(item => {
+                const li = document.createElement('li');
+                li.innerHTML = `<strong>${item.type === 'simple' ? 'Simple' : 'Report'}</strong>: ${item.query}`;
+                historyList.appendChild(li);
+            });
+        }
+
+        document.getElementById('query-form').addEventListener('submit', async function(event) {
+            event.preventDefault();
+
+            const queryInput = document.getElementById('query-input').value;
+            const analysisType = document.querySelector('input[name="analysis_type"]:checked').value;
+            const resultsContainer = document.getElementById('results-container');
+            const resultsContent = document.getElementById('results-content');
+
+            if (!queryInput.trim()) {
+                resultsContent.innerHTML = '<p class="error">Please enter a query.</p>';
+                resultsContainer.classList.remove('hidden');
+                return;
+            }
+
+            resultsContent.innerHTML = '<div class="loading"><div></div><div></div><div></div></div><p class="loading-text">Analyzing... The model is thinking.</p>';
+            resultsContainer.classList.remove('hidden');
+
+            try {
+                // FIXED: Using a relative URL for the fetch call. This is more robust.
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: queryInput, analysis_type: analysisType }),
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    resultsContent.innerHTML = `<p class="error">${data.error}</p>`;
+                    return;
+                }
+                
+                if (!response.ok) {
+                    throw new Error(`Network response was not ok. Status: ${response.status}`);
+                }
+                
+                let htmlResult = '';
+                if (analysisType === 'simple') {
+                    htmlResult = `
+                        <h3>Simple Task Analysis</h3>
+                        <div class="result-item">
+                            <strong>Model Reasoning:</strong>
+                            <p>${data.analysis_steps[0]}</p>
+                        </div>
+                        <div class="result-item">
+                            <strong>Final Result:</strong>
+                            <div class="output-box">${data.final_result}</div>
+                        </div>
+                    `;
+                } else {
+                    let stepsHtml = data.analysis_steps.map(step => `<div class="result-item">${step}</div>`).join('');
+                    htmlResult = `
+                        <h3>Chain-of-Thought Report</h3>
+                        ${stepsHtml}
+                        <div class="result-item">
+                            <strong>Final Synthesis:</strong>
+                            <div class="output-box">${data.final_result}</div>
+                        </div>
+                    `;
+                }
+                resultsContent.innerHTML = htmlResult;
+                
+                if (data.chart_data) {
+                    renderChart(data.chart_data);
+                }
+                if (data.history) {
+                    updateHistory(data.history);
+                }
+
+            } catch (error) {
+                console.error('Fetch Error:', error);
+                resultsContent.innerHTML = `<p class="error">A network error occurred. Please ensure the server is running and check the browser console for more details.</p>`;
+            }
+        });
+
+        
+function renderSentimentChart(labels, scores) {
+    const ctx = document.getElementById('sentiment-chart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Avg Sentiment Score',
+                data: scores,
+                borderColor: 'rgba(255, 99, 132, 1)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, ticks: { color: '#8B949E' }, grid: { color: 'rgba(255,255,255,0.1)' } },
+                x: { ticks: { color: '#8B949E' }, grid: { color: 'rgba(255,255,255,0.1)' } }
+            }
+        }
+    });
+}
+
+// Fetch sentiment chart on page load
+fetch('/sentiment-chart')
+    .then(res => res.json())
+    .then(data => {
+        if (data.labels && data.scores) {
+            renderSentimentChart(data.labels, data.scores);
+        }
+    })
+    .catch(err => console.error("Sentiment chart error:", err));
+
+
+document.addEventListener('DOMContentLoaded', () => {
+            // Fetch initial data to populate chart and history on load
+            // FIXED: Using a relative URL for the fetch call.
+            fetch('/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: 'show all stocks', analysis_type: 'simple' }),
+            })
+            .then(res => res.ok ? res.json() : Promise.reject(res))
+            .then(data => {
+                if (data.chart_data) renderChart(data.chart_data);
+                if (data.history) updateHistory(data.history);
+            })
+            .catch(error => {
+                console.error("Could not fetch initial data:", error);
+                const chartContainer = document.querySelector('.chart-container');
+                if (chartContainer) {
+                    chartContainer.innerHTML = "<p class='error'>Could not load initial chart data.</p>";
+                }
+            });
+        });
+    </script>
+</body>
+</html>
